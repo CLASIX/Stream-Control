@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  background: transparent;
+}
+
+/* Remove the up/down spinner arrows from all number inputs */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Custom dark scrollbars for the whole app */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+html::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+html::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+html::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+  background-clip: content-box;
+}
+
+/* Dashboard message entrance (subtle) */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* OBS overlay: message slides in from the left */
+@keyframes chatSlideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* OBS overlay: message slides in from the right */
+@keyframes chatSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* OBS overlay: message slides back OUT to the left (paired with slide-in-left) */
+@keyframes chatSlideOutLeft {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+}
+
+/* OBS overlay: message slides back OUT to the right (paired with slide-in-right) */
+@keyframes chatSlideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+
+.chat-overlay-msg {
+  opacity: 0;
+}
+
+/* Vinyl turntable spin */
+@keyframes vinyl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Audio Visualizer Bouncing Bars */
+@keyframes barBounce1 {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1.0); }
+}
+@keyframes barBounce2 {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(0.85); }
+}
+@keyframes barBounce3 {
+  0%, 100% { transform: scaleY(0.2); }
+  50% { transform: scaleY(0.95); }
+}
+@keyframes barBounce4 {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(0.75); }
+}
+
+.visualizer-bar-1 { animation: barBounce1 1.2s ease-in-out infinite; transform-origin: bottom; }
+.visualizer-bar-2 { animation: barBounce2 0.9s ease-in-out infinite; transform-origin: bottom; }
+.visualizer-bar-3 { animation: barBounce3 1.4s ease-in-out infinite; transform-origin: bottom; }
+.visualizer-bar-4 { animation: barBounce4 1.1s ease-in-out infinite; transform-origin: bottom; }
+
+/* Seamless marquee scroll for long track titles / artist names */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+
+/* Freeform layout boards may grow wider than the viewport */
+html, body, #root {
+  min-height: 100%;
+}
+main {
+  min-width: 0;
+}
