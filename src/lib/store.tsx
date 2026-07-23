@@ -21,6 +21,7 @@ import {
   savePresets,
   type Preset,
 } from "./presets";
+import { DEFAULT_ACTIONS } from "./alertEngine";
 
 const STORAGE_KEY = "multichat:settings:v1";
 
@@ -52,8 +53,25 @@ export const DEFAULT_SETTINGS: Settings = {
   obsAutoConnect: false,
   obsPreviewFps: 30,
   obsVerticalPreviewSource: "",
-  tabOrder: ["obs", "clips", "chat", "spotify", "bridge", "webhooks", "settings"],
-  moduleOrder: ["obs", "clips", "chat", "spotify", "bridge", "webhooks", "settings"],
+  tabOrder: ["obs", "alerts", "chat", "spotify", "clips", "webhooks", "settings"],
+  moduleOrder: ["obs", "alerts", "chat", "spotify", "clips", "webhooks", "settings"],
+  alerts: {
+    actions: DEFAULT_ACTIONS as any,
+    globalVars: {},
+    activityLog: [],
+    overlayEnabled: true,
+    twitchApiToken: "",
+    kickApiToken: "",
+    discordWebhookDefault: "",
+  },
+  alertActions: DEFAULT_ACTIONS as any,
+  alertBoardLayout: {
+    actionsWorkspace: { x: 0, y: 0, w: 1000, h: 660 },
+    activityQueue: { x: 1020, y: 0, w: 420, h: 660 },
+    overlayConnect: { x: 0, y: 680, w: 720, h: 280 },
+    twitchConnection: { x: 740, y: 680, w: 720, h: 280 },
+  },
+  alertTileOrder: ["actionsWorkspace", "activityQueue", "overlayConnect", "twitchConnection"],
   editMode: false,
   sidebarCollapsed: false,
   sidebarRight: false,
@@ -196,19 +214,46 @@ function loadSettings(): Settings {
     if (!settings.obsLinkedItems || typeof settings.obsLinkedItems !== "object") settings.obsLinkedItems = {};
     if (!Array.isArray(settings.obsHiddenTiles)) settings.obsHiddenTiles = [];
 
-    // Migrate sidebar order: drop legacy "go-live" and ensure "obs" exists
-    // (Go Live was renamed to OBS Dashboard; old OBS Dashboard tab removed).
+    if (!settings.alerts || typeof settings.alerts !== "object") {
+      settings.alerts = {
+        actions: (Array.isArray(settings.alertActions) && settings.alertActions.length > 0 ? settings.alertActions : DEFAULT_ACTIONS) as any,
+        globalVars: {},
+        activityLog: [],
+        overlayEnabled: true,
+        twitchApiToken: "",
+        kickApiToken: "",
+        discordWebhookDefault: "",
+      };
+    } else if (!Array.isArray(settings.alerts.actions) || settings.alerts.actions.length === 0) {
+      settings.alerts.actions = DEFAULT_ACTIONS as any;
+    }
+    if (!Array.isArray(settings.alertActions) || settings.alertActions.length === 0) {
+      settings.alertActions = settings.alerts.actions as any;
+    }
+    if (!settings.alertBoardLayout || typeof settings.alertBoardLayout !== "object") {
+      settings.alertBoardLayout = { ...DEFAULT_SETTINGS.alertBoardLayout };
+    }
+    if (!Array.isArray(settings.alertTileOrder) || settings.alertTileOrder.length === 0) {
+      settings.alertTileOrder = [...DEFAULT_SETTINGS.alertTileOrder];
+    }
+
+    // Migrate sidebar order: drop legacy "go-live"/"bridge" and ensure "obs" and "alerts" exist
     if (Array.isArray(settings.moduleOrder)) {
       const order = settings.moduleOrder
-        .map((id) => (id === "go-live" ? "obs" : id))
+        .map((id) => (id === "go-live" ? "obs" : id === "bridge" ? "alerts" : id))
         .filter((id, i, arr) => arr.indexOf(id) === i);
       if (!order.includes("obs")) order.unshift("obs");
+      if (!order.includes("alerts")) {
+        const obsIdx = order.indexOf("obs");
+        order.splice(obsIdx >= 0 ? obsIdx + 1 : 1, 0, "alerts");
+      }
       if (!order.includes("clips")) {
         const chatIdx = order.indexOf("chat");
         order.splice(chatIdx >= 0 ? chatIdx + 1 : order.length, 0, "clips");
       }
       if (!order.includes("settings")) order.push("settings");
       settings.moduleOrder = order;
+      settings.tabOrder = order;
     }
 
     // Ensure OBS freeform section order includes preview and chat preview, removing old tiles

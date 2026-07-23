@@ -268,4 +268,15 @@ export interface Settings {
   clipHotkey: string;
   /** Global hotkey combo for Save OBS replay. Empty = unset. */
   replayHotkey: string;
+
+  // Alerts & Redemptions Engine (streamer.bot in-app replacement)
+  alerts: import("./types/alerts").AlertsSettings;
+  alertActions: import("./types/alerts").AlertAction[];
+  alertBoardLayout: Record<string, { x: number; y: number; w: number; h?: number }>;
+  alertTileOrder: string[];
+  alertModuleOrder?: string[];
+  alertsTwitchUserLogin?: string;
+  alertsTwitchAccessToken?: string;
 }
+
+export * from "./types/alerts";

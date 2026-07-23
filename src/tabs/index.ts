@@ -6,18 +6,18 @@ import { chatTab } from "./chat";
 import { nowPlayingTab } from "./nowPlaying";
 import { webhooksTab } from "./webhooks";
 import { obsDashboardTab } from "./obsDashboard";
-import { bridgeTab } from "./bridge";
+import { redemptionsTab } from "./redemptions";
 import { clipsTab } from "./clips";
 import { settingsTab } from "./settings";
 
 /** Active dashboard tabs shown in the sidebar. */
 export const TABS: Tab[] = [
   obsDashboardTab, // id: "obs", name: "OBS Dashboard"
+  redemptionsTab, // id: "redemptions", name: "Redemptions"
   chatTab,
   nowPlayingTab,
   clipsTab,
   webhooksTab,
-  bridgeTab,
   settingsTab,
 ];
 

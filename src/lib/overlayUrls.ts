@@ -8,7 +8,7 @@
  * Now Playing: ?overlay=now-playing&client=…&refresh=…&mode=…
  */
 
-export type OverlayKind = "chat" | "now-playing" | "popout";
+export type OverlayKind = "chat" | "now-playing" | "popout" | "alerts";
 
 function baseUrl(): string {
   const { origin, pathname } = window.location;
@@ -112,10 +112,17 @@ export function buildNowPlayingOverlayUrl(opts: NowPlayingOverlayOptions): strin
   return `${baseUrl()}?${p.toString()}`;
 }
 
+export function buildAlertsOverlayUrl(): string {
+  const p = new URLSearchParams();
+  p.set("overlay", "alerts");
+  p.set("bg", "transparent");
+  return `${baseUrl()}?${p.toString()}`;
+}
+
 /** Detect which overlay (if any) the current URL is asking for. */
 export function detectOverlay(params: URLSearchParams): OverlayKind | null {
   const explicit = params.get("overlay");
-  if (explicit === "chat" || explicit === "now-playing" || explicit === "popout")
+  if (explicit === "chat" || explicit === "now-playing" || explicit === "popout" || explicit === "alerts")
     return explicit;
 
   // Back-compat with older query shapes.

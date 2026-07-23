@@ -30,6 +30,15 @@ contextBridge.exposeInMainWorld("streamControl", {
       return () => ipcRenderer.removeListener("webhooks:updated", handler);
     },
   },
+  twitchWebhook: {
+    getSessionId: () => ipcRenderer.invoke("twitch:get-session-id"),
+    openConsole: () => ipcRenderer.invoke("twitch:open-console"),
+    onTrigger: (callback) => {
+      const handler = (_event, item) => callback(item);
+      ipcRenderer.on("twitch:webhook-trigger", handler);
+      return () => ipcRenderer.removeListener("twitch:webhook-trigger", handler);
+    },
+  },
   bridge: {
     setConfig: (cfg) => ipcRenderer.invoke("bridge:set-config", cfg),
     getConfig: () => ipcRenderer.invoke("bridge:get-config"),

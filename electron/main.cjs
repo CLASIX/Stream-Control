@@ -4,6 +4,7 @@ const fs = require("fs");
 const http = require("http");
 const { randomUUID } = require("crypto");
 const { exec } = require("child_process");
+const WebSocket = require("ws");
 
 /**
  * Desktop wrapper for Stream Control.
@@ -19,6 +20,143 @@ const { exec } = require("child_process");
 const HOST = "127.0.0.1";
 const PORT = 8080;
 let server = null;
+
+/* ------------------------------------------------------------------ */
+/* Twitch EventSub WebSocket (no public URL / ngrok needed)            */
+/* ------------------------------------------------------------------ */
+let eventSubWs = null;
+let eventSubSessionId = null;
+
+function connectEventSub() {
+  if (eventSubWs && (eventSubWs.readyState === WebSocket.OPEN || eventSubWs.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  try {
+    eventSubWs = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
+
+    eventSubWs.on("open", () => {
+      console.log("[EventSub] WebSocket connected to wss://eventsub.wss.twitch.tv/ws");
+    });
+
+    eventSubWs.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        const messageType = msg?.metadata?.message_type || "";
+
+        if (messageType === "session_welcome") {
+          eventSubSessionId = msg?.payload?.session?.id || null;
+          const reconnectUrl = msg?.payload?.session?.reconnect_url || null;
+          console.log("[EventSub] Session welcome — session ID:", eventSubSessionId, "reconnect URL:", reconnectUrl || "none");
+        }
+
+        if (messageType === "notification") {
+          const eventType = msg?.metadata?.subscription_type || "";
+          const eventData = msg?.payload?.event || {};
+          if (eventType.includes("channel_points_custom_reward_redemption") || eventData.reward) {
+            const rewardTitle = String(eventData.reward?.title || eventData.reward_title || "").trim();
+            const userName = String(eventData.user_name || eventData.user?.name || eventData.user || "Unknown").trim();
+            const catalog = loadRedemptions();
+            const matched = catalog.find(
+              (r) => r.enabled && r.title && r.title.toLowerCase() === rewardTitle.toLowerCase()
+            );
+            if (matched) {
+              BrowserWindow.getAllWindows().forEach((win) => {
+                if (!win.isDestroyed()) {
+                  win.webContents.send("twitch:webhook-trigger", {
+                    id: matched.id,
+                    title: matched.title,
+                    user: userName,
+                    rewardTitle: rewardTitle,
+                    points: matched.points,
+                    visualUrl: matched.visualUrl,
+                    audioUrl: matched.audioUrl,
+                    mergeAudioVisual: matched.mergeAudioVisual,
+                    durationMs: matched.durationMs,
+                    volume: matched.volume,
+                    bannerText: matched.bannerText,
+                    bannerEnabled: matched.bannerEnabled,
+                    animation: matched.animation,
+                    position: matched.position,
+                    themeColor: matched.themeColor,
+                    variables: matched.variables || {},
+                  });
+                }
+              });
+              console.log("[EventSub] Triggered redemption:", matched.title, "for user:", userName);
+            } else {
+              console.log("[EventSub] No enabled redemption matched:", rewardTitle);
+            }
+          }
+        }
+
+        if (messageType === "session_keepalive") {
+          // Connection healthy — nothing to do.
+        }
+
+        if (messageType === "session_reconnect") {
+          const reconnectUrl = msg?.payload?.session?.reconnect_url || null;
+          console.log("[EventSub] Reconnect requested:", reconnectUrl);
+          if (reconnectUrl) {
+            eventSubWs.close();
+            setTimeout(() => {
+              eventSubWs = new WebSocket(reconnectUrl);
+              // Reattach handlers for the new socket
+              eventSubWs.on("open", () => console.log("[EventSub] Reconnected to:", reconnectUrl));
+              eventSubWs.on("message", (d) => {
+                try {
+                  const m = JSON.parse(d.toString());
+                  const mt = m?.metadata?.message_type || "";
+                  if (mt === "notification") {
+                    const et = m?.metadata?.subscription_type || "";
+                    const ed = m?.payload?.event || {};
+                    if (et.includes("channel_points_custom_reward_redemption") || ed.reward) {
+                      const rt = String(ed.reward?.title || ed.reward_title || "").trim();
+                      const un = String(ed.user_name || ed.user?.name || ed.user || "Unknown").trim();
+                      const cat = loadRedemptions();
+                      const match = cat.find((r) => r.enabled && r.title && r.title.toLowerCase() === rt.toLowerCase());
+                      if (match) {
+                        BrowserWindow.getAllWindows().forEach((win) => {
+                          if (!win.isDestroyed()) win.webContents.send("twitch:webhook-trigger", {
+                            id: match.id, title: match.title, user: un, rewardTitle: rt,
+                            points: match.points, visualUrl: match.visualUrl, audioUrl: match.audioUrl,
+                            mergeAudioVisual: match.mergeAudioVisual, durationMs: match.durationMs,
+                            volume: match.volume, bannerText: match.bannerText, bannerEnabled: match.bannerEnabled,
+                            animation: match.animation, position: match.position, themeColor: match.themeColor,
+                            variables: match.variables || {},
+                          });
+                        });
+                      }
+                    }
+                  }
+                } catch (e) { console.error("[EventSub] Reconnect message error:", e); }
+              });
+              eventSubWs.on("error", (err) => console.error("[EventSub] Reconnect error:", err?.message || err));
+              eventSubWs.on("close", () => setTimeout(connectEventSub, 5000));
+            }, 500);
+          }
+        }
+
+        if (messageType === "revocation") {
+          console.log("[EventSub] Subscription revoked:", msg?.payload?.subscription?.status, msg?.payload?.subscription?.id);
+        }
+      } catch (e) {
+        console.error("[EventSub] Message parse error:", e);
+      }
+    });
+
+    eventSubWs.on("error", (err) => {
+      console.error("[EventSub] WebSocket error:", err?.message || err);
+    });
+
+    eventSubWs.on("close", () => {
+      console.log("[EventSub] WebSocket closed — reconnecting in 5s");
+      setTimeout(connectEventSub, 5000);
+    });
+  } catch (e) {
+    console.error("[EventSub] Connection error:", e);
+    setTimeout(connectEventSub, 5000);
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* streamer.bot bridge (HTTP → renderer via IPC)                      */
@@ -781,6 +919,8 @@ function startWebhookMonitor() {
   setTimeout(() => void checkAllLiveWebhooks(), 2500);
 }
 
+let pendingAlerts = [];
+
 let localTrack = {
   id: "local",
   name: "",
@@ -1199,6 +1339,27 @@ function sendMissingBuild(res) {
   `);
 }
 
+function redemptionsFilePath() {
+  return path.join(app.getPath("userData"), "redemptions.json");
+}
+function loadRedemptions() {
+  try {
+    const raw = fs.readFileSync(redemptionsFilePath(), "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function persistRedemptions(items) {
+  try {
+    fs.mkdirSync(path.dirname(redemptionsFilePath()), { recursive: true });
+    fs.writeFileSync(redemptionsFilePath(), JSON.stringify(items, null, 2), "utf8");
+  } catch (error) {
+    console.error("Could not save redemptions:", error);
+  }
+}
+
 function startLocalServer() {
   const distPath = getDistPath();
   const indexPath = getIndexPath();
@@ -1232,6 +1393,33 @@ function startLocalServer() {
       if (url.pathname === "/api/local-track") {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(localTrack));
+        return;
+      }
+
+      // Alerts overlay API (emit & poll across browser sources)
+      if (url.pathname === "/api/alerts/emit" && req.method === "POST") {
+        readRequestBody(req).then((body) => {
+          if (body && (body.type || body.url)) {
+            pendingAlerts.push({ ...body, _id: Date.now() + Math.random() });
+            if (pendingAlerts.length > 30) pendingAlerts = pendingAlerts.slice(-30);
+          }
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true }));
+        }).catch((e) => {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: String(e) }));
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/alerts/poll" && req.method === "GET") {
+        const since = Number(url.searchParams.get("since") || 0);
+        const newItems = pendingAlerts.filter((i) => i._id > since);
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+        });
+        res.end(JSON.stringify({ items: newItems, now: Date.now() }));
         return;
       }
 
@@ -1291,6 +1479,24 @@ function startLocalServer() {
             });
           }
         })();
+        return;
+      }
+
+      // Redemptions persistence endpoints
+      if (url.pathname === "/api/redemptions/get" && req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, items: loadRedemptions() }));
+        return;
+      }
+      if (url.pathname === "/api/redemptions/save" && req.method === "POST") {
+        readRequestBody(req).then((body) => {
+          const items = Array.isArray(body?.items) ? body.items : (Array.isArray(body) ? body : []);
+          persistRedemptions(items);
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, saved: items.length }));
+        }).catch((e) => {
+          sendJson(res, 400, { ok: false, error: String(e) });
+        });
         return;
       }
 
@@ -1453,6 +1659,104 @@ function closePopoutWindow() {
 function isPopoutWindowOpen() {
   return Boolean(popoutWin && !popoutWin.isDestroyed());
 }
+
+ipcMain.handle("twitch:get-session-id", () => {
+  return { sessionId: eventSubSessionId || null, connected: eventSubWs ? eventSubWs.readyState === WebSocket.OPEN : false };
+});
+
+let consoleWin = null;
+function openConsoleWindow() {
+  if (consoleWin && !consoleWin.isDestroyed()) {
+    consoleWin.show();
+    consoleWin.focus();
+    return;
+  }
+  consoleWin = new BrowserWindow({
+    width: 520,
+    height: 360,
+    backgroundColor: "#0e0e12",
+    resizable: false,
+    autoHideMenuBar: true,
+    title: "EventSub Console",
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true,
+      sandbox: false,
+    },
+  });
+  const sessionId = eventSubSessionId || "Not yet received — wait for welcome message";
+  const wsStatus = eventSubWs ? (eventSubWs.readyState === WebSocket.OPEN ? "Connected" : (eventSubWs.readyState === WebSocket.CONNECTING ? "Connecting..." : "Disconnected / reconnecting")) : "Not connected";
+  const redemptions = loadRedemptions ? loadRedemptions() : [];
+  const enabledCount = redemptions.filter((r) => r.enabled).length;
+  const totalPoints = redemptions.reduce((sum, r) => sum + (r.points || 0), 0);
+  consoleWin.loadURL(`data:text/html;charset=utf-8,
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e0e12; color: #e8e8f0; padding: 24px; margin: 0; line-height: 1.5; }
+          h2 { font-size: 18px; margin-bottom: 4px; color: #9146FF; letter-spacing: -0.02em; }
+          .sub { font-size: 10px; color: rgba(255,255,255,0.25); margin-bottom: 16px; }
+          .label { color: rgba(255,255,255,0.35); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 14px; font-weight: 800; }
+          .line { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 12px; margin: 3px 0; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.05); word-break: break-all; }
+          .line.green { color: #7ee787; }
+          .line.yellow { color: #fbbf24; }
+          .line.red { color: #f87171; }
+          .line.violet { color: #c084fc; }
+          .section { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; }
+        </style>
+      </head>
+      <body>
+        <h2>Stream Control Console</h2>
+        <div class="sub">Desktop server · Port ${PORT} · Headless mode active</div>
+
+        <div class="label">EventSub WebSocket</div>
+        <div class="line violet">Transport: wss://eventsub.wss.twitch.tv/ws</div>
+        <div class="line">Session ID: <span class="violet">${sessionId}</span></div>
+        <div class="line ${wsStatus === "Connected" ? "green" : wsStatus === "Not connected" ? "red" : "yellow"}">Connection: ${wsStatus}</div>
+
+        <div class="label">Subscription Setup</div>
+        <div class="line">Type: channel.channel_points_custom_reward_redemption.add</div>
+        <div class="line">Requires USER access token (not app token)</div>
+        <div class="line">Script: subscribe_websocket.sh</div>
+
+        <div class="label">Redemptions (${redemptions.length} total · ${enabledCount} enabled · ${totalPoints} pts)</div>
+        ${redemptions.map((r) => `<div class="line ${r.enabled ? "green" : "red"}">${r.title} — ${r.points} pts — ${r.enabled ? "ON" : "OFF"}</div>`).join("\n        ")}
+
+        <div class="label">Local Spotify Poll</div>
+        <div class="line">Interval: ${LOCAL_SPOTIFY_POLL_MS}ms</div>
+        <div class="line">Status: ${localSpotifyPollInFlight ? "In progress" : "Idle"}</div>
+        <div class="line">Current track: ${localTrack ? (localTrack.isPlaying ? localTrack.name + " — " + localTrack.artist : "Not playing") : "Unknown"}</div>
+
+        <div class="label">Bridge / Webhooks</div>
+        <div class="line">Bridge actions: ${BRIDGE_ACTIONS.length}</div>
+        <div class="line">Webhook endpoint removed (WebSocket mode)</div>
+        <div class="line">Discord webhook configs: ${webhookConfigs ? webhookConfigs.length : 0}</div>
+
+        <div class="label">Storage</div>
+        <div class="line">Redemptions file: userData/redemptions.json</div>
+        <div class="line">Webhooks file: userData/webhooks.json</div>
+        <div class="line">Storage key: multichat:redemptions:v1</div>
+
+        <div class="label">Server</div>
+        <div class="line">Host: ${HOST}</div>
+        <div class="line">Port: ${PORT}</div>
+        <div class="line">Dist: dist/index.html</div>
+        <div class="line">Electron: ${require("electron").app ? "Active" : "Not loaded"}</div>
+
+        <div class="label">Note</div>
+        <div class="line">No ngrok needed. No public URL needed. Zero cost.</div>
+        <div class="line">WebSocket connects outbound from desktop to Twitch.</div>
+        <div class="line">Edit subscribe_websocket.sh for user token + numeric broadcaster ID.</div>
+      </body>
+    </html>`);
+  consoleWin.on("closed", () => { consoleWin = null; });
+}
+
+ipcMain.handle("twitch:open-console", () => {
+  openConsoleWindow();
+  return true;
+});
 
 ipcMain.handle("open-popout", (_event, url) => openPopoutWindow(url));
 ipcMain.handle("close-popout", () => closePopoutWindow());
@@ -1712,6 +2016,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     startWebhookMonitor();
+    connectEventSub();
     createWindow().catch((error) => {
       dialog.showErrorBox(
         "Stream Control couldn't start",

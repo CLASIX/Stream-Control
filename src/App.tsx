@@ -21,6 +21,7 @@ import { ChatOverlay } from "./components/ChatOverlay";
 import { SpotifyOverlay } from "./components/SpotifyOverlay";
 import { SpotifyCallback } from "./components/SpotifyCallback";
 import { PopoutChat } from "./components/PopoutChat";
+import { AlertsOverlay } from "./components/AlertsOverlay";
 import { BridgeHost } from "./components/BridgeHost";
 import { TwitchClipsCallback } from "./components/TwitchClipsCallback";
 import { detectOverlay } from "./lib/overlayUrls";
@@ -105,6 +106,10 @@ export default function App() {
 
   if (overlay === "popout") {
     return <PopoutChat params={params} />;
+  }
+
+  if (overlay === "alerts") {
+    return <AlertsOverlay params={params} />;
   }
 
   return (

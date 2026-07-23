@@ -11,10 +11,44 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron .",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "dist": "npm run build && npx electron-builder --win",
+    "package": "npm run build && npx electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.streamcontrol.app",
+    "productName": "Stream Control",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Stream Control"
+    }
   },
   "dependencies": {
     "clsx": "2.1.1",
+    "ws": "^8.18.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "tailwind-merge": "3.4.0"
@@ -26,6 +60,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
     "electron": "39.8.10",
+    "electron-builder": "^25.1.8",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "7.3.6",
